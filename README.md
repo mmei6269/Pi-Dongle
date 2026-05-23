@@ -248,3 +248,7 @@ PI_HOST=<pi-user>@raspberrypi.local ./provision/verify-live.sh
   the installer removes/disables BlueALSA runtime ownership.
 - `provision/build-pipewire-aac-plugin.sh` is optional. Use it only on images
   where PipeWire lacks the AAC BlueZ codec plugin.
+
+## License
+
+MIT. See `LICENSE`.

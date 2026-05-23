@@ -6,6 +6,7 @@ AIRPODS_MAC="${AIRPODS_MAC:-}"
 TARGET_USER="${TARGET_USER:-}"
 ENABLE_CROSSFEED="${ENABLE_CROSSFEED:-}"
 ENABLE_AIRPODS_PRO3_EQ="${ENABLE_AIRPODS_PRO3_EQ:-}"
+INSTALL_AAC_PLUGIN="${INSTALL_AAC_PLUGIN:-}"
 RESTART_GADGET_NOW="${RESTART_GADGET_NOW:-0}"
 CAMILLADSP_VERSION="${CAMILLADSP_VERSION:-3.0.1}"
 SKIP_APT="${SKIP_APT:-0}"
@@ -193,6 +194,7 @@ PW_USER=${TARGET_USER}
 ENABLE_CROSSFEED=${ENABLE_CROSSFEED}
 CROSSFEED_PRESET=${CROSSFEED_PRESET}
 ENABLE_AIRPODS_PRO3_EQ=${ENABLE_AIRPODS_PRO3_EQ}
+INSTALL_AAC_PLUGIN=${INSTALL_AAC_PLUGIN}
 DSP_CONFIG=${DSP_CONFIG_LABEL}
 ENV
 
@@ -281,6 +283,52 @@ install_camilladsp() {
   sudo chmod +x /usr/bin/camilladsp
   sudo ln -sf /usr/bin/camilladsp /usr/local/bin/camilladsp
   rm -rf "$tmpdir"
+}
+
+select_aac_plugin_install() {
+  local answer
+
+  if pipewire_aac_plugin_present; then
+    INSTALL_AAC_PLUGIN="0"
+    log "PipeWire AAC codec plugin already present"
+    return 0
+  fi
+
+  if [[ -z "$INSTALL_AAC_PLUGIN" && -t 0 ]]; then
+    printf 'Optional: build/install PipeWire AAC Bluetooth codec plugin for AirPods playback.\n'
+    printf 'This uses extra build dependencies and codec code outside the stock Raspberry Pi OS package set.\n'
+    read -r -p "Build/install optional AAC plugin? [y/N]: " answer
+    INSTALL_AAC_PLUGIN="$answer"
+  fi
+
+  if ! INSTALL_AAC_PLUGIN="$(normalize_bool "$INSTALL_AAC_PLUGIN")"; then
+    die "INSTALL_AAC_PLUGIN must be yes/no or 1/0"
+  fi
+}
+
+install_optional_aac_plugin() {
+  select_aac_plugin_install
+
+  if [[ "$INSTALL_AAC_PLUGIN" != "1" ]]; then
+    warn "PipeWire AAC codec plugin not installed; SBC fallback will be used if AAC is unavailable"
+    return 0
+  fi
+
+  if [[ "$SKIP_APT" == "1" ]]; then
+    die "INSTALL_AAC_PLUGIN=1 requires apt build dependencies; rerun without SKIP_APT"
+  fi
+
+  log "Installing AAC plugin build dependencies"
+  if ! apt_install ca-certificates dpkg-dev gcc git libfdk-aac-dev pkg-config; then
+    die "Unable to install AAC plugin build dependencies; make sure libfdk-aac-dev is available in apt sources"
+  fi
+
+  log "Building and installing PipeWire AAC codec plugin"
+  sudo -E bash "${SCRIPT_DIR}/build-pipewire-aac-plugin.sh"
+
+  if ! pipewire_aac_plugin_present; then
+    die "AAC plugin build completed but libspa-codec-bluez5-aac.so was not found"
+  fi
 }
 
 cleanup_old_stack() {
@@ -546,6 +594,7 @@ configure_pipewire_user_stack() {
   user_systemctl unmask pipewire.service wireplumber.service pipewire-pulse.service pipewire.socket pipewire-pulse.socket || true
   user_systemctl enable --now pipewire.socket pipewire-pulse.socket
   user_systemctl enable --now pipewire.service wireplumber.service pipewire-pulse.service
+  user_systemctl restart pipewire.service pipewire-pulse.service wireplumber.service
 }
 
 disable_bluealsa_stack() {
@@ -708,6 +757,7 @@ main() {
   install_dependencies
   require_cmd nmcli
   install_camilladsp
+  install_optional_aac_plugin
   cleanup_old_stack
   install_files
   configure_wireplumber_codec_policy

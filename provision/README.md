@@ -23,6 +23,7 @@ Non-interactive install:
 AIRPODS_MAC=AA:BB:CC:DD:EE:FF \
 ENABLE_AIRPODS_PRO3_EQ=0 \
 ENABLE_CROSSFEED=virtual \
+INSTALL_AAC_PLUGIN=0 \
 sudo -E bash ./install.sh
 ```
 
@@ -54,6 +55,8 @@ PI_HOST=<pi-user>@raspberrypi.local ./provision/verify-live.sh
   feeds.
 - `ENABLE_CROSSFEED=0`: disable crossfeed. `none`, `off`, and `no` are accepted
   aliases.
+- `INSTALL_AAC_PLUGIN=1`: build/install the optional PipeWire AAC Bluetooth
+  codec plugin. This adds build dependencies and requires `libfdk-aac-dev`.
 - `RESTART_GADGET_NOW=1`: attempt a guarded live USB cutover instead of waiting
   for reboot.
 - `DISABLE_WIFI_AFTER_INSTALL=1`: turn Wi-Fi off after install. Leave unset on a

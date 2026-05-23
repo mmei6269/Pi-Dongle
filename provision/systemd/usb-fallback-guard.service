@@ -1,0 +1,13 @@
+[Unit]
+Description=USB fallback guard (restore g_ether if composite gadget is unavailable)
+After=usb-gadget.service
+Wants=usb-gadget.service
+
+[Service]
+Type=oneshot
+Environment=USB_GADGET_WAIT_SEC=8
+ExecStart=/usr/local/sbin/usb-fallback-guard.sh
+
+[Install]
+WantedBy=multi-user.target
+

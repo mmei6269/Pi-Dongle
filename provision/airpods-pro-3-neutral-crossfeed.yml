@@ -1,0 +1,202 @@
+# CamillaDSP AirPods Pro 3rd generation neutrality EQ plus optional low-latency crossfeed.
+#
+# EQ comes first, then crossfeed. The EQ filters are from the user-provided
+# tuning screenshot and are intended to bring AirPods Pro 3rd generation to neutrality.
+
+devices:
+  samplerate: 48000
+  chunksize: 2048
+  stop_on_rate_change: false
+  capture:
+    type: Alsa
+    channels: 2
+    device: "hw:UAC2Gadget,0"
+    format: S16LE
+  playback:
+    type: Alsa
+    channels: 2
+    device: "pipewire"
+    format: S16LE
+
+mixers:
+  to6_crossfeed:
+    channels: { in: 2, out: 6 }
+    mapping:
+      - dest: 0
+        sources: [{ channel: 0, gain: 0.0 }]
+      - dest: 1
+        sources: [{ channel: 1, gain: 0.0 }]
+      - dest: 2
+        sources: [{ channel: 1, gain: 0.0 }]
+      - dest: 3
+        sources: [{ channel: 0, gain: 0.0 }]
+      - dest: 4
+        sources: [{ channel: 1, gain: 0.0 }]
+      - dest: 5
+        sources: [{ channel: 0, gain: 0.0 }]
+
+  sum2_crossfeed:
+    channels: { in: 6, out: 2 }
+    mapping:
+      - dest: 0
+        sources:
+          - { channel: 0, gain: 0.0 }
+          - { channel: 2, gain: 0.0 }
+          - { channel: 4, gain: 0.0 }
+      - dest: 1
+        sources:
+          - { channel: 1, gain: 0.0 }
+          - { channel: 3, gain: 0.0 }
+          - { channel: 5, gain: 0.0 }
+
+filters:
+  headroom:
+    type: Gain
+    parameters: { gain: -7.0 }
+
+  ap3_pk_45:
+    type: Biquad
+    parameters: { type: Peaking, freq: 45, q: 1.414, gain: 1.0 }
+
+  ap3_ls_70:
+    type: Biquad
+    parameters: { type: Lowshelf, freq: 70, q: 0.707, gain: -7.5 }
+
+  ap3_pk_150:
+    type: Biquad
+    parameters: { type: Peaking, freq: 150, q: 2.3, gain: 0.8 }
+
+  ap3_pk_300:
+    type: Biquad
+    parameters: { type: Peaking, freq: 300, q: 0.707, gain: -1.0 }
+
+  ap3_pk_1500:
+    type: Biquad
+    parameters: { type: Peaking, freq: 1500, q: 2.616, gain: 1.4 }
+
+  ap3_pk_1900:
+    type: Biquad
+    parameters: { type: Peaking, freq: 1900, q: 1.202, gain: 1.4 }
+
+  ap3_pk_2400:
+    type: Biquad
+    parameters: { type: Peaking, freq: 2400, q: 1.414, gain: -1.4 }
+
+  ap3_pk_3000:
+    type: Biquad
+    parameters: { type: Peaking, freq: 3000, q: 0.707, gain: 1.3 }
+
+  ap3_pk_3400:
+    type: Biquad
+    parameters: { type: Peaking, freq: 3400, q: 1.909, gain: 2.9 }
+
+  ap3_pk_5300:
+    type: Biquad
+    parameters: { type: Peaking, freq: 5300, q: 2.616, gain: -2.7 }
+
+  ap3_hs_6000:
+    type: Biquad
+    parameters: { type: Highshelf, freq: 6000, q: 0.707, gain: -5.7 }
+
+  ap3_pk_7700:
+    type: Biquad
+    parameters: { type: Peaking, freq: 7700, q: 4.949, gain: 5.0 }
+
+  ap3_pk_10000:
+    type: Biquad
+    parameters: { type: Peaking, freq: 10000, q: 3.535, gain: -5.0 }
+
+  cf_direct_tilt:
+    type: Biquad
+    parameters: { type: Lowshelf, freq: 850, slope: 12.0, gain: -2.2 }
+
+  cf_main_lp:
+    type: Biquad
+    parameters: { type: Lowpass, freq: 700, q: 0.707 }
+
+  cf_main_gain:
+    type: Gain
+    parameters: { gain: -6.3 }
+
+  cf_main_delay:
+    type: Delay
+    parameters: { delay: 0.26, unit: ms }
+
+  cf_early_lp:
+    type: Biquad
+    parameters: { type: Lowpass, freq: 1800, q: 0.707 }
+
+  cf_early_gain:
+    type: Gain
+    parameters: { gain: -17.0 }
+
+  cf_early_delay:
+    type: Delay
+    parameters: { delay: 1.10, unit: ms }
+
+pipeline:
+  - type: Filter
+    channels: [0]
+    names:
+      - headroom
+      - ap3_pk_45
+      - ap3_ls_70
+      - ap3_pk_150
+      - ap3_pk_300
+      - ap3_pk_1500
+      - ap3_pk_1900
+      - ap3_pk_2400
+      - ap3_pk_3000
+      - ap3_pk_3400
+      - ap3_pk_5300
+      - ap3_hs_6000
+      - ap3_pk_7700
+      - ap3_pk_10000
+
+  - type: Filter
+    channels: [1]
+    names:
+      - headroom
+      - ap3_pk_45
+      - ap3_ls_70
+      - ap3_pk_150
+      - ap3_pk_300
+      - ap3_pk_1500
+      - ap3_pk_1900
+      - ap3_pk_2400
+      - ap3_pk_3000
+      - ap3_pk_3400
+      - ap3_pk_5300
+      - ap3_hs_6000
+      - ap3_pk_7700
+      - ap3_pk_10000
+
+  - type: Mixer
+    name: to6_crossfeed
+
+  - type: Filter
+    channels: [2]
+    names: [cf_main_lp, cf_main_gain, cf_main_delay]
+
+  - type: Filter
+    channels: [3]
+    names: [cf_main_lp, cf_main_gain, cf_main_delay]
+
+  - type: Filter
+    channels: [4]
+    names: [cf_early_lp, cf_early_gain, cf_early_delay]
+
+  - type: Filter
+    channels: [5]
+    names: [cf_early_lp, cf_early_gain, cf_early_delay]
+
+  - type: Filter
+    channels: [0]
+    names: [cf_direct_tilt]
+
+  - type: Filter
+    channels: [1]
+    names: [cf_direct_tilt]
+
+  - type: Mixer
+    name: sum2_crossfeed

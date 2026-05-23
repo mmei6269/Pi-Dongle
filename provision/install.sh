@@ -1,0 +1,730 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AIRPODS_MAC="${AIRPODS_MAC:-}"
+TARGET_USER="${TARGET_USER:-}"
+ENABLE_CROSSFEED="${ENABLE_CROSSFEED:-}"
+ENABLE_AIRPODS_PRO3_EQ="${ENABLE_AIRPODS_PRO3_EQ:-}"
+RESTART_GADGET_NOW="${RESTART_GADGET_NOW:-0}"
+CAMILLADSP_VERSION="${CAMILLADSP_VERSION:-3.0.1}"
+SKIP_APT="${SKIP_APT:-0}"
+DISABLE_WIFI_AFTER_INSTALL="${DISABLE_WIFI_AFTER_INSTALL:-0}"
+RUNTIME_ENV="${RUNTIME_ENV:-/etc/default/pi-audio-dongle}"
+CROSSFEED_PRESET=""
+
+TARGET_UID=""
+TARGET_RUNTIME_DIR=""
+TARGET_DBUS_ADDR=""
+DSP_CONFIG_SOURCE=""
+DSP_CONFIG_LABEL=""
+
+log() {
+  printf '\033[1;32m[INFO]\033[0m %s\n' "$*"
+}
+
+warn() {
+  printf '\033[1;33m[WARN]\033[0m %s\n' "$*"
+}
+
+die() {
+  printf '\033[1;31m[ERR ]\033[0m %s\n' "$*" >&2
+  exit 1
+}
+
+trap 'die "Failed at line $LINENO (exit $?)"' ERR
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "Required command '$1' not found"
+}
+
+detect_target_user() {
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    printf '%s\n' "$SUDO_USER"
+    return 0
+  fi
+
+  local current_user
+  current_user="$(id -un)"
+  if [[ "$current_user" != "root" ]]; then
+    printf '%s\n' "$current_user"
+    return 0
+  fi
+
+  getent passwd 1000 2>/dev/null | cut -d: -f1 | head -n1
+}
+
+resolve_target_user() {
+  if [[ -z "$TARGET_USER" ]]; then
+    TARGET_USER="$(detect_target_user || true)"
+  fi
+
+  if [[ -z "$TARGET_USER" && -t 0 ]]; then
+    read -r -p "Pi login user to run PipeWire/CamillaDSP: " TARGET_USER
+  fi
+
+  [[ -n "$TARGET_USER" ]] || die "Unable to determine target user; rerun with TARGET_USER=<pi-user>"
+
+  if ! id "$TARGET_USER" >/dev/null 2>&1; then
+    die "Target user '${TARGET_USER}' does not exist"
+  fi
+
+  TARGET_UID="$(id -u "$TARGET_USER")"
+  TARGET_RUNTIME_DIR="/run/user/${TARGET_UID}"
+  TARGET_DBUS_ADDR="unix:path=${TARGET_RUNTIME_DIR}/bus"
+}
+
+resolve_airpods_mac() {
+  if [[ -z "$AIRPODS_MAC" && -t 0 ]]; then
+    read -r -p "Headphones Bluetooth MAC (AA:BB:CC:DD:EE:FF; find with bluetoothctl scan on): " AIRPODS_MAC
+  fi
+
+  AIRPODS_MAC="$(printf '%s' "$AIRPODS_MAC" | tr '[:lower:]' '[:upper:]')"
+  if [[ ! "$AIRPODS_MAC" =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ ]]; then
+    die "AIRPODS_MAC must be a Bluetooth MAC like AA:BB:CC:DD:EE:FF"
+  fi
+}
+
+normalize_bool() {
+  case "$1" in
+    1|y|Y|yes|YES|true|TRUE|on|ON) printf '1\n' ;;
+    0|n|N|no|NO|false|FALSE|off|OFF|'') printf '0\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+normalize_crossfeed_preset() {
+  local value
+  value="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    0|n|no|false|off|none|'') printf 'none\n' ;;
+    1|y|yes|true|on|classic|standard|crossfeed|low-latency) printf 'classic\n' ;;
+    monitor|studio|externalize|externalized|conservative) printf 'monitor\n' ;;
+    virtual|matrix|speaker|speakers|virtual-speaker|virtual_speaker) printf 'virtual\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+select_dsp_config() {
+  local answer
+  if [[ -z "$ENABLE_AIRPODS_PRO3_EQ" && -t 0 ]]; then
+    read -r -p "Enable optional AirPods Pro 3rd generation neutrality EQ? [y/N]: " answer
+    ENABLE_AIRPODS_PRO3_EQ="$answer"
+  fi
+
+  if ! ENABLE_AIRPODS_PRO3_EQ="$(normalize_bool "$ENABLE_AIRPODS_PRO3_EQ")"; then
+    die "ENABLE_AIRPODS_PRO3_EQ must be yes/no or 1/0"
+  fi
+
+  if [[ -z "$ENABLE_CROSSFEED" && -t 0 ]]; then
+    printf 'Crossfeed options: none, virtual (recommended), monitor, or classic.\n'
+    printf 'Tip: boolean yes/1 selects classic; use a named preset for exact selection.\n'
+    read -r -p "Crossfeed preset [none]: " answer
+    ENABLE_CROSSFEED="$answer"
+  fi
+
+  if ! CROSSFEED_PRESET="$(normalize_crossfeed_preset "$ENABLE_CROSSFEED")"; then
+    die "ENABLE_CROSSFEED must be none/0, virtual, monitor, or classic/1"
+  fi
+
+  if [[ "$CROSSFEED_PRESET" == "none" ]]; then
+    ENABLE_CROSSFEED="0"
+  else
+    ENABLE_CROSSFEED="1"
+  fi
+
+  if [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" && "$CROSSFEED_PRESET" == "classic" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral-crossfeed.yml"
+    DSP_CONFIG_LABEL="airpods-pro-3-neutral-crossfeed"
+  elif [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" && "$CROSSFEED_PRESET" == "monitor" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral-monitor-crossfeed.yml"
+    DSP_CONFIG_LABEL="airpods-pro-3-neutral-monitor-crossfeed"
+  elif [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" && "$CROSSFEED_PRESET" == "virtual" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral-virtual-speaker-crossfeed.yml"
+    DSP_CONFIG_LABEL="airpods-pro-3-neutral-virtual-speaker-crossfeed"
+  elif [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral.yml"
+    DSP_CONFIG_LABEL="airpods-pro-3-neutral"
+  elif [[ "$CROSSFEED_PRESET" == "classic" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-crossfeed.yml"
+    DSP_CONFIG_LABEL="crossfeed"
+  elif [[ "$CROSSFEED_PRESET" == "monitor" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-monitor-crossfeed.yml"
+    DSP_CONFIG_LABEL="monitor-crossfeed"
+  elif [[ "$CROSSFEED_PRESET" == "virtual" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-virtual-speaker-crossfeed.yml"
+    DSP_CONFIG_LABEL="virtual-speaker-crossfeed"
+  else
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods.yml"
+    DSP_CONFIG_LABEL="clean"
+  fi
+}
+
+sed_escape() {
+  printf '%s' "$1" | sed 's/[\/&]/\\&/g'
+}
+
+render_template() {
+  local src="$1"
+  local dst="$2"
+  local user uid mac
+
+  user="$(sed_escape "$TARGET_USER")"
+  uid="$(sed_escape "$TARGET_UID")"
+  mac="$(sed_escape "$AIRPODS_MAC")"
+
+  sudo sed \
+    -e "s/__TARGET_USER__/${user}/g" \
+    -e "s/__TARGET_UID__/${uid}/g" \
+    -e "s/__AIRPODS_MAC__/${mac}/g" \
+    "$src" | sudo tee "$dst" >/dev/null
+  sudo chmod 644 "$dst"
+}
+
+write_runtime_env() {
+  local tmp
+  tmp="$(mktemp)"
+  cat >"$tmp" <<ENV
+# Generated by pi-audio-dongle install.sh.
+AIRPODS_MAC=${AIRPODS_MAC}
+TARGET_USER=${TARGET_USER}
+TARGET_UID=${TARGET_UID}
+PW_USER=${TARGET_USER}
+ENABLE_CROSSFEED=${ENABLE_CROSSFEED}
+CROSSFEED_PRESET=${CROSSFEED_PRESET}
+ENABLE_AIRPODS_PRO3_EQ=${ENABLE_AIRPODS_PRO3_EQ}
+DSP_CONFIG=${DSP_CONFIG_LABEL}
+ENV
+
+  sudo install -Dm644 "$tmp" "$RUNTIME_ENV"
+  rm -f "$tmp"
+}
+
+user_systemctl() {
+  sudo -u "$TARGET_USER" \
+    XDG_RUNTIME_DIR="$TARGET_RUNTIME_DIR" \
+    DBUS_SESSION_BUS_ADDRESS="$TARGET_DBUS_ADDR" \
+    systemctl --user "$@"
+}
+
+user_cmd() {
+  sudo -u "$TARGET_USER" \
+    XDG_RUNTIME_DIR="$TARGET_RUNTIME_DIR" \
+    DBUS_SESSION_BUS_ADDRESS="$TARGET_DBUS_ADDR" \
+    "$@"
+}
+
+apt_update() {
+  sudo apt-get update
+}
+
+apt_install() {
+  sudo apt-get install -y --no-install-recommends "$@"
+}
+
+install_dependencies() {
+  if [[ "$SKIP_APT" == "1" ]]; then
+    warn "Skipping apt dependency installation because SKIP_APT=1"
+    return 0
+  fi
+
+  log "Installing dependencies"
+  apt_update
+  apt_install \
+    alsa-utils \
+    bluez \
+    dbus \
+    libspa-0.2-bluetooth \
+    network-manager \
+    pipewire \
+    pipewire-alsa \
+    pipewire-bin \
+    pipewire-pulse \
+    wireplumber
+}
+
+install_camilladsp() {
+  if command -v camilladsp >/dev/null 2>&1; then
+    log "CamillaDSP present: $(camilladsp --version 2>/dev/null || echo unknown)"
+    return 0
+  fi
+
+  if [[ "$SKIP_APT" == "1" ]]; then
+    die "CamillaDSP is missing and SKIP_APT=1; install camilladsp first or rerun without SKIP_APT"
+  fi
+
+  log "Installing CamillaDSP from apt"
+  if sudo apt-get install -y --no-install-recommends camilladsp; then
+    return 0
+  fi
+
+  warn "apt package missing; using release binary fallback"
+  if ! command -v curl >/dev/null 2>&1 || ! dpkg -s ca-certificates >/dev/null 2>&1; then
+    apt_install ca-certificates curl
+  fi
+
+  local arch asset tmpdir url
+  arch="$(dpkg --print-architecture)"
+
+  case "$arch" in
+    arm64|aarch64) asset="camilladsp-linux-aarch64.tar.gz" ;;
+    armhf|armv7l|arm) asset="camilladsp-linux-armv7.tar.gz" ;;
+    amd64|x86_64) asset="camilladsp-linux-x86_64.tar.gz" ;;
+    *) die "Unsupported architecture for CamillaDSP: $arch" ;;
+  esac
+
+  url="https://github.com/HEnquist/camilladsp/releases/download/v${CAMILLADSP_VERSION}/${asset}"
+  tmpdir="$(mktemp -d)"
+
+  curl -fL "$url" -o "${tmpdir}/${asset}"
+  sudo tar -xzf "${tmpdir}/${asset}" -C /usr/bin camilladsp
+  sudo chmod +x /usr/bin/camilladsp
+  sudo ln -sf /usr/bin/camilladsp /usr/local/bin/camilladsp
+  rm -rf "$tmpdir"
+}
+
+cleanup_old_stack() {
+  log "Removing stale units/scripts from previous experiments"
+
+  sudo systemctl disable --now camilladsp-autorestart-on-bt.service 2>/dev/null || true
+  sudo systemctl disable --now restart-camilladsp-on-bt.service 2>/dev/null || true
+  sudo systemctl disable --now restart-camilladsp-bt-poll.service 2>/dev/null || true
+  sudo systemctl disable --now cdsp-restart-on-connected-list.service 2>/dev/null || true
+  sudo systemctl disable --now cdsp-restart-on-bt-edge.service 2>/dev/null || true
+  sudo systemctl disable --now cdsp-on-bt-connect.service 2>/dev/null || true
+
+  sudo rm -f /etc/systemd/system/bluealsa.service.d/override.conf
+  sudo rmdir /etc/systemd/system/bluealsa.service.d 2>/dev/null || true
+
+  sudo rm -f /usr/local/bin/camilladsp-autorestart-on-bt.sh
+  sudo rm -f /usr/local/bin/restart-camilladsp-on-bt.sh
+  sudo rm -f /usr/local/bin/restart-camilladsp-bt-poll.sh
+  sudo rm -f /usr/local/bin/restart-camilladsp-on-any-bt-connect.sh
+  sudo rm -f /usr/local/bin/cdsp-restart-on-connected-list.sh
+  sudo rm -f /usr/local/bin/cdsp-restart-on-bt-edge.sh
+}
+
+install_files() {
+  log "Installing provisioned scripts/config/units"
+  local unit_dir="/usr/local/lib/systemd/system"
+
+  sudo install -Dm755 "${SCRIPT_DIR}/usb-gadget-uac2-ecm.sh" /usr/local/sbin/usb-gadget-uac2-ecm.sh
+  sudo install -Dm755 "${SCRIPT_DIR}/usb-fallback-guard.sh" /usr/local/sbin/usb-fallback-guard.sh
+  sudo install -Dm755 "${SCRIPT_DIR}/safe-usb-cutover.sh" /usr/local/sbin/safe-usb-cutover.sh
+  sudo install -Dm755 "${SCRIPT_DIR}/run-camilladsp.sh" /usr/local/bin/run-camilladsp.sh
+  sudo install -Dm755 "${SCRIPT_DIR}/airpods-connect.sh" /usr/local/bin/airpods-connect.sh
+  sudo install -Dm755 "${SCRIPT_DIR}/healthcheck.sh" /usr/local/bin/dongle-healthcheck.sh
+
+  sudo install -d /etc/camilladsp
+  sudo install -m644 "$DSP_CONFIG_SOURCE" /etc/camilladsp/airpods.yml
+  log "Installed CamillaDSP ${DSP_CONFIG_LABEL} config"
+
+  sudo install -d /etc/wireplumber/wireplumber.conf.d
+  sudo install -m644 "${SCRIPT_DIR}/wireplumber/51-bluez-aac.conf" /etc/wireplumber/wireplumber.conf.d/51-bluez-aac.conf
+  sudo install -m644 "${SCRIPT_DIR}/wireplumber/52-dongle-settings.conf" /etc/wireplumber/wireplumber.conf.d/52-dongle-settings.conf
+
+  # Remove stale WirePlumber 0.4/Lua-era role override.
+  sudo rm -f /etc/wireplumber/bluetooth.lua.d/50-bluez-roles.lua
+
+  sudo install -d "$unit_dir"
+  sudo install -m644 "${SCRIPT_DIR}/systemd/usb-gadget.service" "${unit_dir}/usb-gadget.service"
+  sudo install -m644 "${SCRIPT_DIR}/systemd/usb-fallback-guard.service" "${unit_dir}/usb-fallback-guard.service"
+  render_template "${SCRIPT_DIR}/systemd/camilladsp.service" "${unit_dir}/camilladsp.service"
+  render_template "${SCRIPT_DIR}/systemd/airpods-connect.service" "${unit_dir}/airpods-connect.service"
+  write_runtime_env
+
+  # Remove old unit placements that can conflict with masking/overrides.
+  sudo rm -f "${unit_dir}/bluealsa.service"
+  sudo rm -f /etc/systemd/system/usb-fallback-guard.service
+  sudo rm -f /etc/systemd/system/bluealsa.service
+  sudo rm -f /etc/systemd/system/camilladsp.service
+  sudo rm -f /etc/systemd/system/airpods-connect.service
+  sudo rm -f /etc/systemd/system/multi-user.target.wants/bluealsa.service
+  sudo rm -f /etc/systemd/system/multi-user.target.wants/camilladsp.service
+  sudo rm -f /etc/systemd/system/multi-user.target.wants/airpods-connect.service
+  sudo rm -f /etc/systemd/system/multi-user.target.wants/usb-gadget.service
+  sudo rm -f /etc/systemd/system/multi-user.target.wants/usb-fallback-guard.service
+}
+
+sanitize_cmdline_modules() {
+  local cmdline="$1"
+  local token
+  local out=()
+  local mods=()
+
+  for token in $cmdline; do
+    if [[ "$token" == modules-load=* ]]; then
+      IFS=',' read -r -a mods <<<"${token#modules-load=}"
+    elif [[ "$token" == "systemd.mask=usb-gadget.service" ]]; then
+      continue
+    else
+      out+=("$token")
+    fi
+  done
+
+  local keep=()
+  local seen_dwc2=0
+  local m
+  if ((${#mods[@]} > 0)); then
+    for m in "${mods[@]}"; do
+      [[ -z "$m" ]] && continue
+      [[ "$m" == "g_audio" ]] && continue
+      [[ "$m" == "g_ether" ]] && continue
+      if [[ "$m" == "dwc2" ]]; then
+        seen_dwc2=1
+      fi
+      keep+=("$m")
+    done
+  fi
+
+  local joined=""
+  if [[ "$seen_dwc2" -eq 0 ]]; then
+    joined="dwc2"
+  fi
+
+  if ((${#keep[@]} > 0)); then
+    local keep_joined
+    keep_joined="$(IFS=, ; echo "${keep[*]}")"
+    if [[ -n "$joined" ]]; then
+      joined="${joined},${keep_joined}"
+    else
+      joined="$keep_joined"
+    fi
+  fi
+  out+=("modules-load=${joined}")
+
+  printf '%s\n' "${out[*]}"
+}
+
+configure_boot() {
+  log "Configuring boot gadget modules"
+
+  local cmdline_file="/boot/firmware/cmdline.txt"
+  local old_cmdline new_cmdline
+  old_cmdline="$(sudo cat "$cmdline_file")"
+  new_cmdline="$(sanitize_cmdline_modules "$old_cmdline")"
+
+  if [[ "$new_cmdline" != "$old_cmdline" ]]; then
+    echo "$new_cmdline" | sudo tee "$cmdline_file" >/dev/null
+    log "Updated $cmdline_file"
+  fi
+
+  if [[ -f /etc/modules ]]; then
+    sudo sed -i -E '/^[[:space:]]*(g_audio|g_ether)[[:space:]]*$/d' /etc/modules
+    if ! sudo grep -q '^[[:space:]]*dwc2[[:space:]]*$' /etc/modules; then
+      echo dwc2 | sudo tee -a /etc/modules >/dev/null
+    fi
+  fi
+
+  sudo install -d /etc/modules-load.d
+  printf 'dwc2\n' | sudo tee /etc/modules-load.d/usb-gadget.conf >/dev/null
+  sudo rm -f /etc/modules-load.d/usb-fallback.conf
+
+  ensure_single_config_line /boot/firmware/config.txt 'dtoverlay=dwc2,dr_mode=peripheral'
+}
+
+ensure_single_config_line() {
+  local file="$1"
+  local wanted="$2"
+  local tmp
+
+  tmp="$(mktemp)"
+  sudo awk -v wanted="$wanted" '
+    $0 == wanted {
+      if (seen++) next
+      found = 1
+    }
+    { print }
+    END {
+      if (!found) print wanted
+    }
+  ' "$file" >"$tmp"
+
+  if ! sudo cmp -s "$tmp" "$file"; then
+    sudo install -m 644 "$tmp" "$file"
+    log "Updated $file"
+  fi
+
+  rm -f "$tmp"
+}
+
+configure_network() {
+  log "Configuring usb0 static profile (never default route)"
+  local usb_addresses="192.168.7.2/24,169.254.64.64/16"
+
+  if ! sudo nmcli -t -f NAME connection show | grep -Fxq 'usb-gadget'; then
+    sudo nmcli connection add \
+      type ethernet \
+      ifname usb0 \
+      con-name usb-gadget \
+      ipv4.method manual \
+      ipv4.addresses "$usb_addresses" \
+      ipv6.method ignore
+  fi
+
+  sudo nmcli connection modify usb-gadget \
+    connection.interface-name usb0 \
+    connection.autoconnect yes \
+    connection.autoconnect-priority 100 \
+    ipv4.method manual \
+    ipv4.addresses "$usb_addresses" \
+    ipv4.gateway "" \
+    ipv4.dns "" \
+    ipv4.never-default yes \
+    ipv6.method ignore
+
+  # Keep hotspot profile available but do not autoconnect by default.
+  sudo nmcli connection modify Pi-Hotspot connection.autoconnect no connection.autoconnect-priority -100 2>/dev/null || true
+}
+
+configure_wifi_policy() {
+  if ! DISABLE_WIFI_AFTER_INSTALL="$(normalize_bool "$DISABLE_WIFI_AFTER_INSTALL")"; then
+    die "DISABLE_WIFI_AFTER_INSTALL must be yes/no or 1/0"
+  fi
+
+  if [[ "$DISABLE_WIFI_AFTER_INSTALL" != "1" ]]; then
+    log "Leaving Wi-Fi enabled for fresh-install SSH safety"
+    return 0
+  fi
+
+  log "Applying optional Wi-Fi default-off policy"
+
+  while IFS=: read -r name type; do
+    [[ "$type" == "802-11-wireless" ]] || continue
+    sudo nmcli connection modify "$name" connection.autoconnect no 2>/dev/null || true
+  done < <(sudo nmcli -t -f NAME,TYPE connection show)
+
+  sudo nmcli radio wifi off 2>/dev/null || true
+}
+
+configure_bluetooth_policy() {
+  log "Configuring Bluetooth controller mode: BR/EDR only"
+
+  local bt_conf="/etc/bluetooth/main.conf"
+
+  if sudo grep -Eq '^[[:space:]]*#?[[:space:]]*ControllerMode[[:space:]]*=' "$bt_conf"; then
+    sudo sed -i -E 's|^[[:space:]]*#?[[:space:]]*ControllerMode[[:space:]]*=.*|ControllerMode = bredr|' "$bt_conf"
+  else
+    printf '\nControllerMode = bredr\n' | sudo tee -a "$bt_conf" >/dev/null
+  fi
+}
+
+pipewire_aac_plugin_present() {
+  compgen -G "/usr/lib/*/spa-0.2/bluez5/libspa-codec-bluez5-aac.so" >/dev/null
+}
+
+configure_wireplumber_codec_policy() {
+  local conf="/etc/wireplumber/wireplumber.conf.d/51-bluez-aac.conf"
+  [[ -f "$conf" ]] || die "WirePlumber codec policy file missing: $conf"
+
+  # Keep role deterministic for headphone playback.
+  sudo sed -i 's/bluez5.roles = \[ a2dp_sink \]/bluez5.roles = [ a2dp_source ]/' "$conf" || true
+
+  if pipewire_aac_plugin_present; then
+    log "PipeWire AAC codec plugin detected; keeping AAC-only policy"
+    sudo sed -i 's/bluez5.codecs = \[ sbc \]/bluez5.codecs = [ aac ]/' "$conf" || true
+  else
+    warn "PipeWire AAC codec plugin not found; using SBC policy for stability"
+    warn "To enforce AAC-only on PipeWire, install/build a PipeWire bluez codec plugin with AAC support"
+    sudo sed -i 's/bluez5.codecs = \[ aac \]/bluez5.codecs = [ sbc ]/' "$conf" || true
+  fi
+}
+
+configure_pipewire_user_stack() {
+  log "Enabling PipeWire/WirePlumber user stack for ${TARGET_USER}"
+
+  sudo loginctl enable-linger "$TARGET_USER"
+  sudo systemctl start "user@${TARGET_UID}.service" || true
+
+  # Clear previous global masks from BlueALSA-era setup.
+  sudo systemctl --global unmask wireplumber.service pipewire.service pipewire-pulse.service pipewire.socket pipewire-pulse.socket || true
+  sudo rm -f /etc/systemd/user/pipewire.service
+  sudo rm -f /etc/systemd/user/pipewire-pulse.service
+  sudo rm -f /etc/systemd/user/wireplumber.service
+
+  user_systemctl daemon-reload
+  user_systemctl unmask pipewire.service wireplumber.service pipewire-pulse.service pipewire.socket pipewire-pulse.socket || true
+  user_systemctl enable --now pipewire.socket pipewire-pulse.socket
+  user_systemctl enable --now pipewire.service wireplumber.service pipewire-pulse.service
+}
+
+disable_bluealsa_stack() {
+  log "Disabling BlueALSA runtime ownership"
+  sudo systemctl disable --now bluealsa.service 2>/dev/null || true
+}
+
+enable_services() {
+  log "Enabling system services"
+  local usb_runtime_masked=0
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable bluetooth.service
+  sudo systemctl unmask usb-gadget.service 2>/dev/null || true
+  sudo rm -f /etc/systemd/system/usb-gadget.service 2>/dev/null || true
+  sudo systemctl daemon-reload
+
+  if ! sudo systemctl enable usb-gadget.service; then
+    usb_runtime_masked=1
+    warn "Could not enable usb-gadget.service in current boot session (likely runtime mask from previous cmdline); reboot will clear this if cmdline is clean"
+    sudo ln -sf /usr/local/lib/systemd/system/usb-gadget.service /etc/systemd/system/multi-user.target.wants/usb-gadget.service
+  fi
+
+  sudo systemctl reenable usb-fallback-guard.service
+  sudo systemctl reenable camilladsp.service
+  sudo systemctl reenable airpods-connect.service
+
+  if [[ "$usb_runtime_masked" -eq 1 ]]; then
+    warn "Skipping service restarts in this session because usb-gadget is runtime-masked; reboot first"
+  else
+    sudo systemctl restart bluetooth.service
+    sudo systemctl restart camilladsp.service
+    sudo systemctl restart airpods-connect.service
+
+    if [[ "$RESTART_GADGET_NOW" == "1" ]]; then
+      log "Applying safe USB composite cutover now"
+      sudo /usr/local/sbin/safe-usb-cutover.sh || warn "Safe cutover did not validate immediately; rollback is armed"
+    else
+      warn "USB composite mode staged. Reboot on fresh installs; use safe-usb-cutover.sh only for a guarded live cutover"
+    fi
+  fi
+}
+
+assert_usb_contract() {
+  log "Validating USB composite contract"
+
+  local cmdline
+  cmdline="$(sudo cat /boot/firmware/cmdline.txt)"
+  if [[ "$cmdline" != *"modules-load="* ]] || [[ "$cmdline" != *"dwc2"* ]]; then
+    die "USB contract failed: /boot/firmware/cmdline.txt must include modules-load with dwc2"
+  fi
+
+  if [[ "$cmdline" == *"g_ether"* ]] || [[ "$cmdline" == *"g_audio"* ]]; then
+    die "USB contract failed: cmdline must not include g_ether or g_audio"
+  fi
+
+  if [[ ! -f /etc/modules-load.d/usb-gadget.conf ]]; then
+    die "USB contract failed: /etc/modules-load.d/usb-gadget.conf missing"
+  fi
+
+  if ! sudo grep -Eq '^[[:space:]]*dwc2[[:space:]]*$' /etc/modules-load.d/usb-gadget.conf; then
+    die "USB contract failed: dwc2 missing from usb-gadget.conf"
+  fi
+
+  local gadget_state
+  gadget_state="$(sudo systemctl is-enabled usb-gadget.service 2>/dev/null || true)"
+  local runtime_cmdline
+  runtime_cmdline="$(cat /proc/cmdline 2>/dev/null || true)"
+  if [[ "$gadget_state" == masked* ]]; then
+    if [[ "$runtime_cmdline" == *"systemd.mask=usb-gadget.service"* ]]; then
+      warn "usb-gadget.service is runtime-masked by current boot cmdline; reboot required to clear"
+    else
+      die "USB contract failed: usb-gadget.service is masked (current: ${gadget_state:-unknown})"
+    fi
+  elif [[ "$gadget_state" == disabled* ]]; then
+    die "USB contract failed: usb-gadget.service must be enabled (current: ${gadget_state:-unknown})"
+  fi
+
+  local guard_state
+  guard_state="$(sudo systemctl is-enabled usb-fallback-guard.service 2>/dev/null || true)"
+  if [[ "$guard_state" == masked* ]] || [[ "$guard_state" == disabled* ]]; then
+    die "USB contract failed: usb-fallback-guard.service must be enabled (current: ${guard_state:-unknown})"
+  fi
+}
+
+assert_pipewire_contract() {
+  log "Validating PipeWire contract"
+
+  if ! dpkg -s libspa-0.2-bluetooth >/dev/null 2>&1; then
+    die "PipeWire contract failed: libspa-0.2-bluetooth is not installed"
+  fi
+
+  if ! user_systemctl is-active --quiet pipewire wireplumber pipewire-pulse; then
+    die "PipeWire contract failed: user services are not active"
+  fi
+
+  if sudo systemctl is-active --quiet bluealsa; then
+    die "PipeWire contract failed: bluealsa.service is still active"
+  fi
+
+  if pipewire_aac_plugin_present; then
+    log "PipeWire AAC codec plugin is available"
+  else
+    warn "PipeWire AAC codec plugin is unavailable on this image (SBC fallback active)"
+  fi
+}
+
+verify_stack() {
+  log "Verification snapshot"
+
+  sudo systemctl is-active bluetooth camilladsp airpods-connect usb-gadget || true
+  sudo systemctl is-enabled usb-gadget.service usb-fallback-guard.service camilladsp.service airpods-connect.service || true
+  sudo systemctl is-enabled bluealsa.service || true
+
+  user_systemctl is-active pipewire wireplumber pipewire-pulse || true
+  user_cmd wpctl status 2>/dev/null | sed -n '1,120p' || true
+
+  ip -br addr show usb0 || true
+}
+
+print_next_steps() {
+  cat <<NEXT
+
+[NEXT]
+Pair the headphones once:
+
+  bluetoothctl
+  power on
+  agent on
+  default-agent
+  scan on
+  pair ${AIRPODS_MAC}
+  trust ${AIRPODS_MAC}
+  connect ${AIRPODS_MAC}
+  quit
+
+Fresh install: reboot to load the Pi USB device overlay.
+
+  sudo reboot
+
+Already in USB device mode and want a live cutover instead of rebooting:
+
+  sudo /usr/local/sbin/safe-usb-cutover.sh
+
+After reconnecting, validate the dongle:
+
+  sudo /usr/local/bin/dongle-healthcheck.sh
+NEXT
+}
+
+main() {
+  require_cmd sudo
+  require_cmd systemctl
+  require_cmd loginctl
+
+  resolve_target_user
+  resolve_airpods_mac
+  select_dsp_config
+  log "Selected DSP config: ${DSP_CONFIG_LABEL} (crossfeed=${CROSSFEED_PRESET}, AirPods Pro 3 EQ=${ENABLE_AIRPODS_PRO3_EQ})"
+  install_dependencies
+  require_cmd nmcli
+  install_camilladsp
+  cleanup_old_stack
+  install_files
+  configure_wireplumber_codec_policy
+  configure_boot
+  configure_network
+  configure_wifi_policy
+  configure_bluetooth_policy
+  configure_pipewire_user_stack
+  disable_bluealsa_stack
+  enable_services
+  assert_usb_contract
+  assert_pipewire_contract
+  verify_stack
+  print_next_steps
+
+  log "Install complete"
+  log "Health check: /usr/local/bin/dongle-healthcheck.sh"
+}
+
+main "$@"

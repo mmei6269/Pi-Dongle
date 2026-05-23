@@ -1,0 +1,115 @@
+# CamillaDSP AirPods Pro 3rd generation neutrality EQ.
+#
+# The EQ filters are from the user-provided tuning screenshot and are intended
+# to bring AirPods Pro 3rd generation to a neutral response. The headroom filter only lowers
+# overall level to reduce clipping risk; it does not change the relative EQ.
+
+devices:
+  samplerate: 48000
+  chunksize: 2048
+  stop_on_rate_change: false
+  capture:
+    type: Alsa
+    channels: 2
+    device: "hw:UAC2Gadget,0"
+    format: S16LE
+  playback:
+    type: Alsa
+    channels: 2
+    device: "pipewire"
+    format: S16LE
+
+filters:
+  headroom:
+    type: Gain
+    parameters: { gain: -6.0 }
+
+  ap3_pk_45:
+    type: Biquad
+    parameters: { type: Peaking, freq: 45, q: 1.414, gain: 1.0 }
+
+  ap3_ls_70:
+    type: Biquad
+    parameters: { type: Lowshelf, freq: 70, q: 0.707, gain: -7.5 }
+
+  ap3_pk_150:
+    type: Biquad
+    parameters: { type: Peaking, freq: 150, q: 2.3, gain: 0.8 }
+
+  ap3_pk_300:
+    type: Biquad
+    parameters: { type: Peaking, freq: 300, q: 0.707, gain: -1.0 }
+
+  ap3_pk_1500:
+    type: Biquad
+    parameters: { type: Peaking, freq: 1500, q: 2.616, gain: 1.4 }
+
+  ap3_pk_1900:
+    type: Biquad
+    parameters: { type: Peaking, freq: 1900, q: 1.202, gain: 1.4 }
+
+  ap3_pk_2400:
+    type: Biquad
+    parameters: { type: Peaking, freq: 2400, q: 1.414, gain: -1.4 }
+
+  ap3_pk_3000:
+    type: Biquad
+    parameters: { type: Peaking, freq: 3000, q: 0.707, gain: 1.3 }
+
+  ap3_pk_3400:
+    type: Biquad
+    parameters: { type: Peaking, freq: 3400, q: 1.909, gain: 2.9 }
+
+  ap3_pk_5300:
+    type: Biquad
+    parameters: { type: Peaking, freq: 5300, q: 2.616, gain: -2.7 }
+
+  ap3_hs_6000:
+    type: Biquad
+    parameters: { type: Highshelf, freq: 6000, q: 0.707, gain: -5.7 }
+
+  ap3_pk_7700:
+    type: Biquad
+    parameters: { type: Peaking, freq: 7700, q: 4.949, gain: 5.0 }
+
+  ap3_pk_10000:
+    type: Biquad
+    parameters: { type: Peaking, freq: 10000, q: 3.535, gain: -5.0 }
+
+pipeline:
+  - type: Filter
+    channels: [0]
+    names:
+      - headroom
+      - ap3_pk_45
+      - ap3_ls_70
+      - ap3_pk_150
+      - ap3_pk_300
+      - ap3_pk_1500
+      - ap3_pk_1900
+      - ap3_pk_2400
+      - ap3_pk_3000
+      - ap3_pk_3400
+      - ap3_pk_5300
+      - ap3_hs_6000
+      - ap3_pk_7700
+      - ap3_pk_10000
+
+  - type: Filter
+    channels: [1]
+    names:
+      - headroom
+      - ap3_pk_45
+      - ap3_ls_70
+      - ap3_pk_150
+      - ap3_pk_300
+      - ap3_pk_1500
+      - ap3_pk_1900
+      - ap3_pk_2400
+      - ap3_pk_3000
+      - ap3_pk_3400
+      - ap3_pk_5300
+      - ap3_hs_6000
+      - ap3_pk_7700
+      - ap3_pk_10000
+

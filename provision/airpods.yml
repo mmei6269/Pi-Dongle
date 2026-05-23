@@ -1,0 +1,37 @@
+# CamillaDSP clean passthrough config.
+#
+# Signal path:
+#   USB UAC2 capture -> optional user DSP edits -> PipeWire playback
+#
+# This file intentionally contains no headphone-specific EQ. Add your own
+# filters/pipeline steps below if you want correction, loudness, room effects,
+# or other DSP.
+
+devices:
+  samplerate: 48000
+  chunksize: 2048
+  stop_on_rate_change: false
+  capture:
+    type: Alsa
+    channels: 2
+    device: "hw:UAC2Gadget,0"
+    format: S16LE
+  playback:
+    type: Alsa
+    channels: 2
+    device: "pipewire"
+    format: S16LE
+
+filters:
+  passthrough_gain:
+    type: Gain
+    parameters: { gain: 0.0 }
+
+pipeline:
+  - type: Filter
+    channels: [0]
+    names: [passthrough_gain]
+
+  - type: Filter
+    channels: [1]
+    names: [passthrough_gain]

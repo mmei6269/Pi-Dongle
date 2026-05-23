@@ -1,0 +1,17 @@
+[Unit]
+Description=AirPods auto-connect and PipeWire sink orchestration
+After=bluetooth.service camilladsp.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/pi-audio-dongle
+Environment=CONNECT_RETRY_SEC=8
+Environment=SINK_RETRY_SEC=5
+Environment=CAMILLA_RESTART_DELAY_SEC=1
+ExecStart=/usr/local/bin/airpods-connect.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

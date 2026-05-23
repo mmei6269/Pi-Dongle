@@ -1,0 +1,19 @@
+[Unit]
+Description=CamillaDSP audio pipeline (UAC2 -> DSP -> PipeWire)
+After=bluetooth.service usb-gadget.service network.target
+Wants=bluetooth.service usb-gadget.service
+
+[Service]
+Type=simple
+User=__TARGET_USER__
+EnvironmentFile=/etc/default/pi-audio-dongle
+Environment=XDG_RUNTIME_DIR=/run/user/__TARGET_UID__
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/__TARGET_UID__/bus
+ExecStart=/usr/local/bin/run-camilladsp.sh
+Restart=always
+RestartSec=1
+LimitRTPRIO=90
+LimitRTTIME=900000
+
+[Install]
+WantedBy=multi-user.target

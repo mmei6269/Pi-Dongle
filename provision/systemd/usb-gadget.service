@@ -1,0 +1,15 @@
+[Unit]
+Description=USB composite gadget (UAC2 + CDC-ECM)
+After=local-fs.target sys-kernel-config.mount
+Requires=sys-kernel-config.mount
+Before=network-pre.target
+Wants=network-pre.target
+OnFailure=usb-fallback-guard.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/usb-gadget-uac2-ecm.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

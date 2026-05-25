@@ -84,6 +84,18 @@ and whether to build the optional AAC Bluetooth codec plugin. It leaves Wi-Fi
 enabled so a fresh SSH install does not strand you before USB management is
 verified.
 
+On some Raspberry Pi OS images, the Bluetooth controller may be soft blocked by
+default. If `bluetoothctl` cannot power on the controller or does not find
+devices, check and unblock it:
+
+```bash
+rfkill list bluetooth
+sudo rfkill unblock bluetooth
+sudo systemctl restart bluetooth
+```
+
+Run `rfkill list bluetooth` again and confirm `Soft blocked: no` before pairing.
+
 After install, pair the headphones once:
 
 ```bash

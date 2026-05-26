@@ -26,7 +26,7 @@ devices:
     type: Alsa
     channels: 2
     device: "pipewire"
-    format: S16LE
+    format: FLOAT32LE
 
 mixers:
   to4_reference_speaker:

@@ -38,9 +38,12 @@ adjusted by ear. Treat it as a starting point, not a reviewed reference target.
   locally, then transmits Bluetooth A2DP audio to the headphones.
 - The USB gadget is configured for 48 kHz, 16-bit, stereo audio. Source devices
   may resample before sending audio to the dongle.
+- CamillaDSP sends 32-bit float samples to PipeWire to avoid an extra 16-bit
+  handoff before Bluetooth encoding.
 - Bluetooth playback uses AAC when the PipeWire BlueZ AAC codec plugin is
-  available. On images without that plugin, the installer falls back to SBC
-  unless you opt into building the AAC plugin during install.
+  available, with AAC quality mode 5 requested by WirePlumber. On images
+  without that plugin, the installer falls back to SBC unless you opt into
+  building the AAC plugin during install.
 - Expect added latency from USB buffering, CamillaDSP processing, PipeWire, and
   Bluetooth. This is intended for music listening, not live monitoring, gaming,
   or video work where tight sync is critical.

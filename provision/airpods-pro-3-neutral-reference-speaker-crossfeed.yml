@@ -55,7 +55,7 @@ mixers:
 filters:
   headroom:
     type: Gain
-    parameters: { gain: -7.0 }
+    parameters: { gain: -12.0 }
 
   ap3_pk_45:
     type: Biquad

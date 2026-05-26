@@ -1,0 +1,93 @@
+# CamillaDSP reference virtual-speaker crossfeed config.
+#
+# This preset is a more physically grounded speaker renderer than the simple
+# crossfeed presets:
+# - +/-30-degree virtual speakers
+# - four speaker-to-ear paths
+# - Brown/Duda spherical-head shadowing in the FIRs
+# - Woodworth-style 0.261 ms interaural timing in the FIRs
+# - phantom-center compensation to avoid bass/lower-mid bloat on earbuds
+#
+# The FIR files are installed to /etc/camilladsp/reference-speaker/.
+
+devices:
+  samplerate: 48000
+  chunksize: 2048
+  stop_on_rate_change: false
+  capture:
+    type: Alsa
+    channels: 2
+    device: "hw:UAC2Gadget,0"
+    format: S16LE
+  playback:
+    type: Alsa
+    channels: 2
+    device: "pipewire"
+    format: S16LE
+
+mixers:
+  to4_reference_speaker:
+    channels: { in: 2, out: 4 }
+    mapping:
+      # LL: left speaker -> left ear
+      - dest: 0
+        sources: [{ channel: 0, gain: 0.0 }]
+      # LR: left speaker -> right ear
+      - dest: 1
+        sources: [{ channel: 0, gain: 0.0 }]
+      # RL: right speaker -> left ear
+      - dest: 2
+        sources: [{ channel: 1, gain: 0.0 }]
+      # RR: right speaker -> right ear
+      - dest: 3
+        sources: [{ channel: 1, gain: 0.0 }]
+
+  sum2_reference_speaker:
+    channels: { in: 4, out: 2 }
+    mapping:
+      - dest: 0
+        sources:
+          - { channel: 0, gain: 0.0 }
+          - { channel: 2, gain: 0.0 }
+      - dest: 1
+        sources:
+          - { channel: 1, gain: 0.0 }
+          - { channel: 3, gain: 0.0 }
+
+filters:
+  headroom:
+    type: Gain
+    parameters: { gain: -6.0 }
+
+  ref_speaker_ipsi:
+    type: Conv
+    parameters:
+      type: File
+      filename: /etc/camilladsp/reference-speaker/speaker_30_ipsi_fir.txt
+      format: TEXT
+
+  ref_speaker_contra:
+    type: Conv
+    parameters:
+      type: File
+      filename: /etc/camilladsp/reference-speaker/speaker_30_contra_fir.txt
+      format: TEXT
+
+pipeline:
+  - type: Filter
+    channels: [0, 1]
+    names: [headroom]
+
+  - type: Mixer
+    name: to4_reference_speaker
+
+  - type: Filter
+    channels: [0, 3]
+    names: [ref_speaker_ipsi]
+
+  - type: Filter
+    channels: [1, 2]
+    names: [ref_speaker_contra]
+
+  - type: Mixer
+    name: sum2_reference_speaker

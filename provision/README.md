@@ -22,7 +22,7 @@ Non-interactive install:
 ```bash
 AIRPODS_MAC=AA:BB:CC:DD:EE:FF \
 ENABLE_AIRPODS_PRO3_EQ=0 \
-ENABLE_CROSSFEED=virtual \
+ENABLE_CROSSFEED=reference \
 INSTALL_AAC_PLUGIN=0 \
 sudo -E bash ./install.sh
 ```
@@ -47,7 +47,9 @@ PI_HOST=<pi-user>@raspberrypi.local ./provision/verify-live.sh
   `sudo` on a normal install.
 - `ENABLE_AIRPODS_PRO3_EQ=1`: install the AirPods Pro 3rd generation neutrality
   EQ preset.
-- `ENABLE_CROSSFEED=virtual`: install the recommended 4-filter virtual-speaker
+- `ENABLE_CROSSFEED=reference`: install the researched FIR virtual-speaker
+  crossfeed preset.
+- `ENABLE_CROSSFEED=virtual`: install the simpler 4-filter virtual-speaker
   crossfeed preset.
 - `ENABLE_CROSSFEED=monitor`: install the conservative monitor crossfeed preset.
 - `ENABLE_CROSSFEED=classic` or `ENABLE_CROSSFEED=1`: install the low-latency
@@ -69,10 +71,13 @@ Crossfeed is optional and separate from the AirPods Pro 3rd generation
 neutrality EQ. The installer combines the selected EQ and crossfeed choices into
 one installed CamillaDSP config at `/etc/camilladsp/airpods.yml`.
 
-- `virtual` is the recommended crossfeed implementation for most users. It is a
-  virtual-speaker matrix with flat same-side paths and low-passed, delayed
-  opposite-side paths for stronger speaker-like imaging without generic room
-  coloration.
+- `reference` is the most speaker-correct implementation. It uses FIR
+  speaker-to-ear paths for +/-30-degree speakers, Brown/Duda-style head
+  shadowing, Woodworth-style interaural timing, and phantom-center compensation
+  to keep centered material tonally flat.
+- `virtual` is the simpler virtual-speaker implementation. It uses a matrix with
+  flat same-side paths and low-passed, delayed opposite-side paths for stronger
+  speaker-like imaging without generic room coloration.
 - `monitor` is subtler. It leaves direct left/right paths unshaped and adds only
   a low-passed, lightly delayed opposite-ear feed to soften hard pans.
 - `classic` or `1` is the low-latency preset. It adds direct-channel tilt plus
@@ -115,6 +120,8 @@ file with the selected bundled preset.
 - `airpods-connect.sh`: reconnects the configured headphones and selects the
   PipeWire sink.
 - `airpods*.yml`: CamillaDSP passthrough, EQ, crossfeed, and combined presets.
+- `reference-speaker/*.txt`: FIR coefficients for the reference speaker
+  crossfeed preset.
 - `wireplumber/*.conf`: headless Bluetooth playback policy.
 - `systemd/*.service`: runtime system units.
 - `build-pipewire-aac-plugin.sh`: optional helper for images without the PipeWire

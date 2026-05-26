@@ -100,6 +100,7 @@ normalize_crossfeed_preset() {
   case "$value" in
     0|n|no|false|off|none|'') printf 'none\n' ;;
     1|y|yes|true|on|classic|standard|crossfeed|low-latency) printf 'classic\n' ;;
+    reference|ref|correct|accurate|speaker-reference|speaker_reference|reference-speaker|reference_speaker) printf 'reference\n' ;;
     monitor|studio|externalize|externalized|conservative) printf 'monitor\n' ;;
     virtual|matrix|speaker|speakers|virtual-speaker|virtual_speaker) printf 'virtual\n' ;;
     *) return 1 ;;
@@ -118,14 +119,14 @@ select_dsp_config() {
   fi
 
   if [[ -z "$ENABLE_CROSSFEED" && -t 0 ]]; then
-    printf 'Crossfeed options: none, virtual (recommended), monitor, or classic.\n'
+    printf 'Crossfeed options: none, reference, virtual, monitor, or classic.\n'
     printf 'Tip: boolean yes/1 selects classic; use a named preset for exact selection.\n'
     read -r -p "Crossfeed preset [none]: " answer
     ENABLE_CROSSFEED="$answer"
   fi
 
   if ! CROSSFEED_PRESET="$(normalize_crossfeed_preset "$ENABLE_CROSSFEED")"; then
-    die "ENABLE_CROSSFEED must be none/0, virtual, monitor, or classic/1"
+    die "ENABLE_CROSSFEED must be none/0, reference, virtual, monitor, or classic/1"
   fi
 
   if [[ "$CROSSFEED_PRESET" == "none" ]]; then
@@ -143,6 +144,9 @@ select_dsp_config() {
   elif [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" && "$CROSSFEED_PRESET" == "virtual" ]]; then
     DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral-virtual-speaker-crossfeed.yml"
     DSP_CONFIG_LABEL="airpods-pro-3-neutral-virtual-speaker-crossfeed"
+  elif [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" && "$CROSSFEED_PRESET" == "reference" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral-reference-speaker-crossfeed.yml"
+    DSP_CONFIG_LABEL="airpods-pro-3-neutral-reference-speaker-crossfeed"
   elif [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" ]]; then
     DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral.yml"
     DSP_CONFIG_LABEL="airpods-pro-3-neutral"
@@ -155,6 +159,9 @@ select_dsp_config() {
   elif [[ "$CROSSFEED_PRESET" == "virtual" ]]; then
     DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-virtual-speaker-crossfeed.yml"
     DSP_CONFIG_LABEL="virtual-speaker-crossfeed"
+  elif [[ "$CROSSFEED_PRESET" == "reference" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-reference-speaker-crossfeed.yml"
+    DSP_CONFIG_LABEL="reference-speaker-crossfeed"
   else
     DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods.yml"
     DSP_CONFIG_LABEL="clean"
@@ -364,6 +371,9 @@ install_files() {
   sudo install -Dm755 "${SCRIPT_DIR}/healthcheck.sh" /usr/local/bin/dongle-healthcheck.sh
 
   sudo install -d /etc/camilladsp
+  sudo install -d /etc/camilladsp/reference-speaker
+  sudo install -m644 "${SCRIPT_DIR}/reference-speaker/speaker_30_ipsi_fir.txt" /etc/camilladsp/reference-speaker/speaker_30_ipsi_fir.txt
+  sudo install -m644 "${SCRIPT_DIR}/reference-speaker/speaker_30_contra_fir.txt" /etc/camilladsp/reference-speaker/speaker_30_contra_fir.txt
   sudo install -m644 "$DSP_CONFIG_SOURCE" /etc/camilladsp/airpods.yml
   log "Installed CamillaDSP ${DSP_CONFIG_LABEL} config"
 

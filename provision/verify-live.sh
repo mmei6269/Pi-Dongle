@@ -19,6 +19,8 @@ LOCAL_FILES=(
   "provision/airpods-connect.sh"
   "provision/healthcheck.sh"
   "provision/airpods.yml"
+  "provision/reference-speaker/speaker_30_ipsi_fir.txt"
+  "provision/reference-speaker/speaker_30_contra_fir.txt"
   "provision/wireplumber/51-bluez-aac.conf"
   "provision/wireplumber/52-dongle-settings.conf"
   "provision/systemd/usb-gadget.service"
@@ -35,6 +37,8 @@ REMOTE_FILES=(
   "/usr/local/bin/airpods-connect.sh"
   "/usr/local/bin/dongle-healthcheck.sh"
   "/etc/camilladsp/airpods.yml"
+  "/etc/camilladsp/reference-speaker/speaker_30_ipsi_fir.txt"
+  "/etc/camilladsp/reference-speaker/speaker_30_contra_fir.txt"
   "/etc/wireplumber/wireplumber.conf.d/51-bluez-aac.conf"
   "/etc/wireplumber/wireplumber.conf.d/52-dongle-settings.conf"
   "/usr/local/lib/systemd/system/usb-gadget.service"
@@ -98,10 +102,12 @@ selected_dsp_config() {
     crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-crossfeed.yml" ;;
     monitor-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-monitor-crossfeed.yml" ;;
     virtual-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-virtual-speaker-crossfeed.yml" ;;
+    reference-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-reference-speaker-crossfeed.yml" ;;
     airpods-pro-3-neutral) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral.yml" ;;
     airpods-pro-3-neutral-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-crossfeed.yml" ;;
     airpods-pro-3-neutral-monitor-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-monitor-crossfeed.yml" ;;
     airpods-pro-3-neutral-virtual-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-virtual-speaker-crossfeed.yml" ;;
+    airpods-pro-3-neutral-reference-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-reference-speaker-crossfeed.yml" ;;
     *)
       fail "unknown remote DSP_CONFIG=${DSP_CONFIG}"
       return 1

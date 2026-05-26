@@ -12,9 +12,8 @@ phone / tablet / computer
 ```
 
 The default DSP preset is clean passthrough. During install you can optionally
-enable AirPods Pro 3rd generation neutrality EQ, a crossfeed preset, or both.
-If you want the most speaker-correct crossfeed, use the reference speaker preset;
-`virtual` remains available as a simpler low-latency option.
+enable AirPods Pro 3rd generation neutrality EQ, reference speaker crossfeed, or
+both.
 
 ## Motivation
 
@@ -136,31 +135,21 @@ Healthy state:
 ```bash
 AIRPODS_MAC=AA:BB:CC:DD:EE:FF \
 ENABLE_AIRPODS_PRO3_EQ=0 \
-ENABLE_CROSSFEED=reference \
+ENABLE_CROSSFEED=1 \
 INSTALL_AAC_PLUGIN=0 \
 sudo -E bash ./install.sh
 ```
 
-`ENABLE_CROSSFEED` accepts either an on/off value or a named preset:
-
-- `0`, `none`, `off`, `no`, or an empty value disables crossfeed.
-- `reference` selects the researched virtual-speaker preset. It uses FIR
-  speaker-to-ear paths for +/-30-degree speakers, Brown/Duda-style head
-  shadowing, Woodworth-style interaural timing, and phantom-center compensation
-  to avoid the warm/bloated tonal shift of simple crossfeed.
-- `virtual` selects the simpler virtual-speaker implementation. It uses a
-  4-filter speaker-to-ear matrix: flat ipsilateral paths plus low-passed,
-  delayed contralateral paths for a more speaker-like presentation without
-  generic room or pinna coloration.
-- `monitor` selects the conservative monitor crossfeed preset: flat direct
-  left/right paths plus a low-passed, lightly delayed opposite-ear feed for
-  softer hard pans with minimal tonal change.
-- `classic`, `1`, `on`, `yes`, or `low-latency` selects the low-latency
-  crossfeed preset: direct-channel tilt plus main and early opposite-ear feeds.
-  It is more shaped than `monitor` and less speaker-matrix-like than `virtual`.
+`ENABLE_CROSSFEED` is a boolean. `1`, `yes`, `true`, or `on` enables the
+reference speaker crossfeed; `0`, `no`, `false`, `off`, or an empty value keeps
+crossfeed disabled. The reference crossfeed uses FIR speaker-to-ear paths for
++/-30-degree speakers, Brown/Duda-style head shadowing, Woodworth-style
+interaural timing, and phantom-center compensation to avoid the warm/bloated
+tonal shift of simple crossfeed.
 
 `ENABLE_AIRPODS_PRO3_EQ=1` is independent from crossfeed. When both are enabled,
-the installer chooses the matching combined EQ plus crossfeed CamillaDSP preset.
+the installer chooses the combined AirPods EQ plus reference crossfeed CamillaDSP
+config.
 
 `INSTALL_AAC_PLUGIN=1` builds and installs the optional PipeWire AAC Bluetooth
 codec plugin before WirePlumber codec policy is applied. This is useful for
@@ -196,20 +185,8 @@ PI_HOST=<pi-user>@raspberrypi.local SKIP_APT=1 ./provision/deploy.sh
 - `provision/airpods.yml`: clean passthrough.
 - `provision/airpods-pro-3-neutral.yml`: AirPods Pro 3rd generation neutrality
   EQ.
-- `provision/airpods-crossfeed.yml`: neutral crossfeed without headphone EQ.
-- `provision/airpods-monitor-crossfeed.yml`: conservative monitor crossfeed
-  without headphone EQ.
-- `provision/airpods-virtual-speaker-crossfeed.yml`: simple 4-filter
-  virtual-speaker crossfeed without headphone EQ.
 - `provision/airpods-reference-speaker-crossfeed.yml`: researched FIR
   virtual-speaker crossfeed without headphone EQ.
-- `provision/airpods-pro-3-neutral-crossfeed.yml`: AirPods Pro 3rd generation
-  neutrality EQ plus classic low-latency crossfeed.
-- `provision/airpods-pro-3-neutral-monitor-crossfeed.yml`: AirPods Pro 3rd
-  generation neutrality EQ plus conservative monitor crossfeed.
-- `provision/airpods-pro-3-neutral-virtual-speaker-crossfeed.yml`: AirPods Pro
-  3rd generation neutrality EQ plus simple 4-filter virtual-speaker
-  crossfeed.
 - `provision/airpods-pro-3-neutral-reference-speaker-crossfeed.yml`: AirPods Pro
   3rd generation neutrality EQ plus researched FIR virtual-speaker crossfeed.
 - `provision/reference-speaker/*.txt`: FIR coefficients used by the researched

@@ -99,14 +99,8 @@ resolve_host() {
 selected_dsp_config() {
   case "$DSP_CONFIG" in
     clean|'') printf '%s\n' "${REPO_ROOT}/provision/airpods.yml" ;;
-    crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-crossfeed.yml" ;;
-    monitor-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-monitor-crossfeed.yml" ;;
-    virtual-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-virtual-speaker-crossfeed.yml" ;;
     reference-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-reference-speaker-crossfeed.yml" ;;
     airpods-pro-3-neutral) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral.yml" ;;
-    airpods-pro-3-neutral-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-crossfeed.yml" ;;
-    airpods-pro-3-neutral-monitor-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-monitor-crossfeed.yml" ;;
-    airpods-pro-3-neutral-virtual-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-virtual-speaker-crossfeed.yml" ;;
     airpods-pro-3-neutral-reference-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-reference-speaker-crossfeed.yml" ;;
     *)
       fail "unknown remote DSP_CONFIG=${DSP_CONFIG}"
@@ -185,7 +179,7 @@ fi
 
 WIREPLUMBER_CODEC="$(ssh "${SSH_OPTS[@]}" "$PI_HOST" "grep -E '^[[:space:]]*bluez5.codecs' /etc/wireplumber/wireplumber.conf.d/51-bluez-aac.conf 2>/dev/null | sed -E 's/.*\\[ ([^] ]+) \\].*/\\1/'" || true)"
 
-ssh "${SSH_OPTS[@]}" "$PI_HOST" "sudo sha256sum ${REMOTE_FILES[*]}" >"$REMOTE_HASH_FILE"
+ssh "${SSH_OPTS[@]}" "$PI_HOST" "sudo sha256sum ${REMOTE_FILES[*]} 2>/dev/null || true" >"$REMOTE_HASH_FILE"
 
 failures=0
 for i in "${!LOCAL_FILES[@]}"; do

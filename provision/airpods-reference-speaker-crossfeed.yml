@@ -13,6 +13,9 @@
 devices:
   samplerate: 48000
   chunksize: 2048
+  target_level: 4096
+  adjust_period: 5.0
+  enable_rate_adjust: true
   stop_on_rate_change: false
   capture:
     type: Alsa
@@ -62,14 +65,14 @@ filters:
   ref_speaker_ipsi:
     type: Conv
     parameters:
-      type: File
+      type: Raw
       filename: /etc/camilladsp/reference-speaker/speaker_30_ipsi_fir.txt
       format: TEXT
 
   ref_speaker_contra:
     type: Conv
     parameters:
-      type: File
+      type: Raw
       filename: /etc/camilladsp/reference-speaker/speaker_30_contra_fir.txt
       format: TEXT
 

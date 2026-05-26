@@ -12,6 +12,9 @@
 devices:
   samplerate: 48000
   chunksize: 2048
+  target_level: 4096
+  adjust_period: 5.0
+  enable_rate_adjust: true
   stop_on_rate_change: false
   capture:
     type: Alsa

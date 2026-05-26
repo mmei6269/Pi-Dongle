@@ -375,6 +375,7 @@ install_files() {
   sudo install -m644 "${SCRIPT_DIR}/reference-speaker/speaker_30_ipsi_fir.txt" /etc/camilladsp/reference-speaker/speaker_30_ipsi_fir.txt
   sudo install -m644 "${SCRIPT_DIR}/reference-speaker/speaker_30_contra_fir.txt" /etc/camilladsp/reference-speaker/speaker_30_contra_fir.txt
   sudo install -m644 "$DSP_CONFIG_SOURCE" /etc/camilladsp/airpods.yml
+  sudo camilladsp -c /etc/camilladsp/airpods.yml >/dev/null
   log "Installed CamillaDSP ${DSP_CONFIG_LABEL} config"
 
   sudo install -d /etc/wireplumber/wireplumber.conf.d

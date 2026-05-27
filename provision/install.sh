@@ -94,6 +94,17 @@ normalize_bool() {
   esac
 }
 
+normalize_crossfeed_preset() {
+  local value
+  value="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    0|n|no|false|off|none|'') printf 'none\n' ;;
+    virtual|matrix|speaker|speakers|virtual-speaker|virtual_speaker) printf 'virtual\n' ;;
+    1|y|yes|true|on|advanced|reference|ref|fir|reference-speaker|reference_speaker) printf 'advanced\n' ;;
+    *) return 1 ;;
+  esac
+}
+
 select_dsp_config() {
   local answer
   if [[ -z "$ENABLE_AIRPODS_PRO3_EQ" && -t 0 ]]; then
@@ -106,29 +117,32 @@ select_dsp_config() {
   fi
 
   if [[ -z "$ENABLE_CROSSFEED" && -t 0 ]]; then
-    read -r -p "Enable reference speaker crossfeed? [y/N]: " answer
+    printf 'Crossfeed presets: none, virtual, or advanced.\n'
+    read -r -p "Crossfeed preset [none]: " answer
     ENABLE_CROSSFEED="$answer"
   fi
 
-  if ! ENABLE_CROSSFEED="$(normalize_bool "$ENABLE_CROSSFEED")"; then
-    die "ENABLE_CROSSFEED must be yes/no or 1/0"
+  if ! CROSSFEED_PRESET="$(normalize_crossfeed_preset "$ENABLE_CROSSFEED")"; then
+    die "ENABLE_CROSSFEED must be none/0, virtual, or advanced/1"
   fi
 
-  if [[ "$ENABLE_CROSSFEED" == "1" ]]; then
-    CROSSFEED_PRESET="reference"
-  else
-    CROSSFEED_PRESET="none"
-  fi
+  ENABLE_CROSSFEED="$CROSSFEED_PRESET"
 
-  if [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" && "$ENABLE_CROSSFEED" == "1" ]]; then
+  if [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" && "$CROSSFEED_PRESET" == "advanced" ]]; then
     DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral-reference-speaker-crossfeed.yml"
     DSP_CONFIG_LABEL="airpods-pro-3-neutral-reference-speaker-crossfeed"
+  elif [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" && "$CROSSFEED_PRESET" == "virtual" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral-virtual-speaker-crossfeed.yml"
+    DSP_CONFIG_LABEL="airpods-pro-3-neutral-virtual-speaker-crossfeed"
   elif [[ "$ENABLE_AIRPODS_PRO3_EQ" == "1" ]]; then
     DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-pro-3-neutral.yml"
     DSP_CONFIG_LABEL="airpods-pro-3-neutral"
-  elif [[ "$ENABLE_CROSSFEED" == "1" ]]; then
+  elif [[ "$CROSSFEED_PRESET" == "advanced" ]]; then
     DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-reference-speaker-crossfeed.yml"
     DSP_CONFIG_LABEL="reference-speaker-crossfeed"
+  elif [[ "$CROSSFEED_PRESET" == "virtual" ]]; then
+    DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods-virtual-speaker-crossfeed.yml"
+    DSP_CONFIG_LABEL="virtual-speaker-crossfeed"
   else
     DSP_CONFIG_SOURCE="${SCRIPT_DIR}/airpods.yml"
     DSP_CONFIG_LABEL="clean"

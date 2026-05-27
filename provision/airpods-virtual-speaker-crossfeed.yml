@@ -1,0 +1,121 @@
+# CamillaDSP recommended 4-filter virtual-speaker crossfeed config.
+#
+# This is a minimum-coloration virtual speaker matrix for +/-30-degree stereo:
+# - each source channel is split into four speaker-to-ear paths
+# - ipsilateral paths are flat gain cells to preserve headphone tonality
+# - contralateral paths add low-frequency head-shadow and timing cues
+# - no generic pinna EQ or room reflection is applied
+#
+# It is intentionally simpler and lighter than the advanced FIR reference
+# speaker preset.
+
+devices:
+  samplerate: 48000
+  chunksize: 4096
+  target_level: 4096
+  adjust_period: 5.0
+  enable_rate_adjust: true
+  stop_on_rate_change: false
+  capture:
+    type: Alsa
+    channels: 2
+    device: "hw:UAC2Gadget,0"
+    format: S16LE
+  playback:
+    type: Alsa
+    channels: 2
+    device: "pipewire"
+    format: FLOAT32LE
+
+mixers:
+  to4_virtual_speaker:
+    channels: { in: 2, out: 4 }
+    mapping:
+      # LL: left speaker -> left ear
+      - dest: 0
+        sources: [{ channel: 0, gain: 0.0 }]
+      # LR: left speaker -> right ear
+      - dest: 1
+        sources: [{ channel: 0, gain: 0.0 }]
+      # RL: right speaker -> left ear
+      - dest: 2
+        sources: [{ channel: 1, gain: 0.0 }]
+      # RR: right speaker -> right ear
+      - dest: 3
+        sources: [{ channel: 1, gain: 0.0 }]
+
+  sum2_virtual_speaker:
+    channels: { in: 4, out: 2 }
+    mapping:
+      - dest: 0
+        sources:
+          - { channel: 0, gain: 0.0 }
+          - { channel: 2, gain: 0.0 }
+      - dest: 1
+        sources:
+          - { channel: 1, gain: 0.0 }
+          - { channel: 3, gain: 0.0 }
+
+filters:
+  headroom:
+    type: Gain
+    parameters: { gain: -4.0 }
+
+  vs_ll_ipsi:
+    type: Gain
+    parameters: { gain: 0.0 }
+
+  vs_rr_ipsi:
+    type: Gain
+    parameters: { gain: 0.0 }
+
+  vs_lr_shadow_lp:
+    type: Biquad
+    parameters: { type: LowpassFO, freq: 700 }
+
+  vs_rl_shadow_lp:
+    type: Biquad
+    parameters: { type: LowpassFO, freq: 700 }
+
+  vs_lr_shadow_gain:
+    type: Gain
+    parameters: { gain: -8.0 }
+
+  vs_rl_shadow_gain:
+    type: Gain
+    parameters: { gain: -8.0 }
+
+  vs_lr_geometry_delay:
+    type: Delay
+    parameters: { delay: 0.05, unit: ms, subsample: true }
+
+  vs_rl_geometry_delay:
+    type: Delay
+    parameters: { delay: 0.05, unit: ms, subsample: true }
+
+pipeline:
+  - type: Filter
+    channels: [0, 1]
+    names: [headroom]
+
+  - type: Mixer
+    name: to4_virtual_speaker
+
+  - type: Filter
+    channels: [0]
+    names: [vs_ll_ipsi]
+
+  - type: Filter
+    channels: [1]
+    names: [vs_lr_shadow_lp, vs_lr_shadow_gain, vs_lr_geometry_delay]
+
+  - type: Filter
+    channels: [2]
+    names: [vs_rl_shadow_lp, vs_rl_shadow_gain, vs_rl_geometry_delay]
+
+  - type: Filter
+    channels: [3]
+    names: [vs_rr_ipsi]
+
+  - type: Mixer
+    name: sum2_virtual_speaker

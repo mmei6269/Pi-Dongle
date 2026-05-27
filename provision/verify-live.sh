@@ -100,8 +100,10 @@ selected_dsp_config() {
   case "$DSP_CONFIG" in
     clean|'') printf '%s\n' "${REPO_ROOT}/provision/airpods.yml" ;;
     reference-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-reference-speaker-crossfeed.yml" ;;
+    virtual-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-virtual-speaker-crossfeed.yml" ;;
     airpods-pro-3-neutral) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral.yml" ;;
     airpods-pro-3-neutral-reference-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-reference-speaker-crossfeed.yml" ;;
+    airpods-pro-3-neutral-virtual-speaker-crossfeed) printf '%s\n' "${REPO_ROOT}/provision/airpods-pro-3-neutral-virtual-speaker-crossfeed.yml" ;;
     *)
       fail "unknown remote DSP_CONFIG=${DSP_CONFIG}"
       return 1

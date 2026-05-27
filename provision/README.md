@@ -22,7 +22,7 @@ Non-interactive install:
 ```bash
 AIRPODS_MAC=AA:BB:CC:DD:EE:FF \
 ENABLE_AIRPODS_PRO3_EQ=0 \
-ENABLE_CROSSFEED=1 \
+ENABLE_CROSSFEED=virtual \
 INSTALL_AAC_PLUGIN=0 \
 sudo -E bash ./install.sh
 ```
@@ -47,9 +47,12 @@ PI_HOST=<pi-user>@raspberrypi.local ./provision/verify-live.sh
   `sudo` on a normal install.
 - `ENABLE_AIRPODS_PRO3_EQ=1`: install the AirPods Pro 3rd generation neutrality
   EQ preset.
-- `ENABLE_CROSSFEED=1`: install the researched FIR reference speaker crossfeed.
-- `ENABLE_CROSSFEED=0`: disable crossfeed. `no`, `false`, and `off` are accepted
-  aliases.
+- `ENABLE_CROSSFEED=none`: disable crossfeed. `0`, `no`, `false`, and `off` are
+  accepted aliases.
+- `ENABLE_CROSSFEED=virtual`: install the lightweight 4-filter virtual-speaker
+  crossfeed.
+- `ENABLE_CROSSFEED=advanced`: install the researched FIR reference-speaker
+  crossfeed. `1`, `yes`, `reference`, and `fir` are accepted aliases.
 - `INSTALL_AAC_PLUGIN=1`: build/install the optional PipeWire AAC Bluetooth
   codec plugin. This adds build dependencies and requires `libfdk-aac-dev`.
 - `RESTART_GADGET_NOW=1`: attempt a guarded live USB cutover instead of waiting
@@ -61,13 +64,20 @@ PI_HOST=<pi-user>@raspberrypi.local ./provision/verify-live.sh
 ## Crossfeed Options
 
 Crossfeed is optional and separate from the AirPods Pro 3rd generation
-neutrality EQ. There is one crossfeed implementation: the reference speaker FIR
-matrix. `ENABLE_CROSSFEED=1` turns it on, and `ENABLE_CROSSFEED=0` leaves clean
-passthrough unless the AirPods Pro 3rd generation neutrality EQ is enabled.
+neutrality EQ. The installer supports three crossfeed choices:
 
-The reference crossfeed uses FIR speaker-to-ear paths for +/-30-degree speakers,
-Brown/Duda-style head shadowing, Woodworth-style interaural timing, and
-phantom-center compensation to keep centered material tonally flat.
+- `none` keeps clean passthrough unless the AirPods Pro 3rd generation
+  neutrality EQ is enabled.
+- `virtual` uses a lightweight 4-filter matrix: flat same-side paths plus
+  low-passed, lightly delayed opposite-ear feeds.
+- `advanced` uses FIR speaker-to-ear paths for +/-30-degree speakers,
+  Brown/Duda-style head shadowing, Woodworth-style interaural timing, and
+  phantom-center compensation to keep centered material tonally flat.
+
+The `advanced` FIR preset is the more speaker-correct model, but it can exhibit
+stability issues on the Pi Bluetooth path and can make AAC/Bluetooth compression
+artifacts more obvious. If the advanced preset sounds grainy or unstable, use
+`virtual`.
 
 ## Custom DSP Configs
 
@@ -92,7 +102,8 @@ file with the selected bundled preset.
   and prints pairing/validation next steps.
 - `deploy.sh`: copies this bundle to a Pi over SSH and runs `install.sh`; falls
   back from `rsync` to `tar` when needed.
-- `healthcheck.sh`: one-command runtime validation on the Pi.
+- `healthcheck.sh`: one-command runtime validation on the Pi, including the
+  installed DSP/crossfeed config metadata.
 - `verify-live.sh`: compares this repo's provisioned files against a live dongle
   over SSH.
 - `usb-gadget-uac2-ecm.sh`: configfs UAC2 audio plus USB Ethernet gadget.
